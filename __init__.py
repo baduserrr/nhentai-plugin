@@ -17,8 +17,9 @@ class Nhentai(Source):
     name                = 'nhentai.net'
     description         = 'Pull data from nhentai.net, by name or by id'
     author              = 'Baduserrr'
-    version             = (1, 0, 0)
+    version             = (1, 1, 0)
     minimum_calibre_version = (2, 0, 0)
+    
 
     capabilities = frozenset(['identify'])
     touched_fields = frozenset(['authors', 'identifier:nhentai', 'publisher', 'pubdate', 'tags', 'series', 'languages'])
@@ -40,14 +41,22 @@ class Nhentai(Source):
             search_name = urllib.parse.quote_plus(title)
             url = f"{Nhentai.NH_QRY}{search_name}"
             search_lang_result = Nhentai.nhentai_search(url)
-            if search_lang_result:
+            if len(search_lang_result) > 5:
+                quote = f"%22{search_name}%22"
+                url = f"{Nhentai.NH_QRY}{quote}"
+                search_lang_result = Nhentai.nhentai_search(url)
+                if search_lang_result:
+                    for temp_gallery_id in search_lang_result:
+                        temp_raw_metadata.append(Nhentai.nhentai_metadata(temp_gallery_id))
+            elif len(search_lang_result) < 5:
                 for temp_gallery_id in search_lang_result:
-                    temp_raw_metadata.append(Nhentai.nhentai_metadata(temp_gallery_id))
-            else:
+                        temp_raw_metadata.append(Nhentai.nhentai_metadata(temp_gallery_id))
+            elif not search_lang_result:
                 log.info(f"No search lang_result for | {title} | try to get the id")
         # log.info(f"Query = {temp_raw_metadata}")
         
         clean_metadata = []
+        # log.info(temp_raw_metadata)
         for raw_metadata in temp_raw_metadata:
             processed_metadata = {
                 'title': ' '.join(raw_metadata.get('title', [])),
@@ -56,7 +65,7 @@ class Nhentai(Source):
                     raw_metadata.get('artist', [])
                     ),
                 'identifiers': ' '.join(raw_metadata.get('identifier', [])),
-                'publisher': ' '.join(raw_metadata.get('groups', [])),
+                'publisher': ' '.join(raw_metadata.get('groups', [])).title(),
                 'pubdate': datetime.strptime(raw_metadata['uploaded'][0], "%Y-%m-%d").date() if raw_metadata.get('uploaded') else None,
                 'language': Nhentai.get_language(raw_metadata.get('languages', [])),
                 'tags': list(chain.from_iterable([
@@ -68,16 +77,20 @@ class Nhentai(Source):
             }
             clean_metadata.append(processed_metadata)
 
-        log.info(f"Cleaned Data : {clean_metadata}")
-        for cleaned in clean_metadata:
+        log.info(clean_metadata)
+        for i, cleaned in enumerate(clean_metadata):
             mi = Metadata(title, cleaned['authors'])
             mi.set_identifier(Nhentai.NH_ID, cleaned['identifiers'])
             mi.publisher = cleaned['publisher']
             mi.pubdate = cleaned['pubdate']
             mi.language = cleaned['language']
             mi.tags = cleaned['tags']
+            mi.source_relevance = i
 
             result_queue.put(mi)
+
+    def compare_identify_results(self, res1, res2):
+        return False
 
     # -------------------------
     # Get html data of the link
