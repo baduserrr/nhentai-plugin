@@ -77,7 +77,7 @@ class Nhentai(Source):
             }
             clean_metadata.append(processed_metadata)
 
-        log.info(clean_metadata)
+        # log.info(clean_metadata)
         for i, cleaned in enumerate(clean_metadata):
             mi = Metadata(title, cleaned['authors'])
             mi.set_identifier(Nhentai.NH_ID, cleaned['identifiers'])
