@@ -8,8 +8,8 @@ from itertools import chain
 from datetime import datetime
 
 from calibre import random_user_agent
-from calibre.ebooks.metadata.book.temp_author_list import Metadata
-from calibre.ebooks.metadata.sources.temp_author_list import Source
+from calibre.ebooks.metadata.book.base import Metadata
+from calibre.ebooks.metadata.sources.base import Source
 
 class Nhentai(Source):
 
@@ -21,7 +21,7 @@ class Nhentai(Source):
     minimum_calibre_version = (2, 0, 0)
 
     capabilities = frozenset(['identify'])
-    touched_fields = frozenset(['title', 'authors', 'identifier:nhentai', 'publisher', 'pubdate', 'tags', 'series', 'languages'])
+    touched_fields = frozenset(['authors', 'identifier:nhentai', 'publisher', 'pubdate', 'tags', 'series', 'languages'])
 
     # -------------------------
     # Set constant variable
@@ -31,12 +31,11 @@ class Nhentai(Source):
 
     # -------------------------
     # Main stuff happen here
-    def identify(self, log, lang_result_queue, abort, title, authors, identifiers={}, timeout=30):
+    def identify(self, log, result_queue, abort, title, authors, identifiers={}, timeout=30):
         gallery_id = identifiers.get(Nhentai.NH_ID, None)
         temp_raw_metadata = []
         if gallery_id:
             temp_raw_metadata.append(Nhentai.nhentai_metadata(gallery_id))
-            # log.info(f"ID = {temp_raw_metadata}")
         else:
             search_name = urllib.parse.quote_plus(title)
             url = f"{Nhentai.NH_QRY}{search_name}"
@@ -44,9 +43,9 @@ class Nhentai(Source):
             if search_lang_result:
                 for temp_gallery_id in search_lang_result:
                     temp_raw_metadata.append(Nhentai.nhentai_metadata(temp_gallery_id))
-                    # log.info(f"Query = {temp_raw_metadata}")
             else:
                 log.info(f"No search lang_result for | {title} | try to get the id")
+        # log.info(f"Query = {temp_raw_metadata}")
         
         clean_metadata = []
         for raw_metadata in temp_raw_metadata:
@@ -69,17 +68,16 @@ class Nhentai(Source):
             }
             clean_metadata.append(processed_metadata)
 
-        # log.info(f"Cleaned Data : {clean_metadata}")
+        log.info(f"Cleaned Data : {clean_metadata}")
         for cleaned in clean_metadata:
-            mi = Metadata(cleaned['title'], cleaned['authors'])
+            mi = Metadata(title, cleaned['authors'])
             mi.set_identifier(Nhentai.NH_ID, cleaned['identifiers'])
             mi.publisher = cleaned['publisher']
             mi.pubdate = cleaned['pubdate']
             mi.language = cleaned['language']
             mi.tags = cleaned['tags']
 
-            # log.info(f"iterate {mi} : {cleaned['identifiers']}")
-            lang_result_queue.put(mi)
+            result_queue.put(mi)
 
     # -------------------------
     # Get html data of the link
@@ -153,7 +151,7 @@ class Nhentai(Source):
         match = re.match(r'^(\([^)]+\)\s*)?\[([^\]]+)\]\s+(.+)', filename)
 
         if match:
-            prefix = match.group(1).strip() if match.group(1) else None
+            prefix = match.group(1).strip() if match.group(1) else ""
             author = match.group(2).strip()
             title = match.group(3).strip()
             full_title = f"{prefix} {title}".strip()
@@ -163,14 +161,22 @@ class Nhentai(Source):
             }
         else:
             return None
-    
+            
     # -------------------------
     # combine authors and artist name
     def get_authors(authors, artists):
-        def norm(name): return re.sub(r'\[.*?\]\s*', '', name).strip().lower()
-        temp_author_list = [a.strip() for a in authors]
-        temp_authors = {norm(a) for a in temp_author_list}
-        return temp_author_list + [a.strip() for a in artists if norm(a) not in temp_authors]
+        authors = [a.strip() for a in authors or [] if a.strip()]
+        artists = [a.strip() for a in artists or [] if a.strip()]
+
+        temp_author = ' '.join(authors).lower()
+
+        # Only include artists not already mentioned in any form in author entries
+        temp_artist = [
+            artist for artist in artists
+            if artist.lower() not in temp_author
+        ]
+
+        return authors + temp_artist
     
     # -------------------------
     # combine authors and artist name
